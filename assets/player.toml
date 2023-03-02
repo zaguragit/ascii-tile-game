@@ -1,0 +1,11 @@
+[diet]
+meat = false
+plants = true
+light = true
+
+[body]
+max_health = 1.0
+max_nutrition = 1.0
+
+smelliness = 1.0
+strength = 1.0

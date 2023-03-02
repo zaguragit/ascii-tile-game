@@ -1,38 +1,83 @@
-use estrogen::{AsciiSprite, Context, Key, Game, UpdateResult, rgb};
 
-use crate::{world::World, TEXT_SIZE, player::Player, util::FastRandom};
+use engine::{AsciiSprite, Context, Key, Game, UpdateResult, rgb, RGB, util::draw_text, rgb_gray};
+use crate::{TEXT_SIZE, player::Player, scene::world::adapter::tile_to_ascii_sprite};
+use simulation::{world::{World, Entity}, util::FastRandom};
 
 mod adapter;
 
 pub fn create_world_scene<const SIZE: usize, const H: usize>(world: World<SIZE, H>) -> Game<Player<SIZE, H>> {
-    let player = Player { world };
+    let player = Player::new(world, 24);
     Game::new(player, get_char_at, on_tick, 2.5)
 }
 
-fn get_char_at<const SIZE: usize, const H: usize>(player: &Player<SIZE, H>, x: usize, y: usize) -> AsciiSprite {
+fn draw_gui<const SIZE: usize, const H: usize>(
+    player: &Player<SIZE, H>,
+    x: usize,
+    y: usize,
+) -> Option<AsciiSprite> {
+    const xoff: usize = 1;
+    const yoff: usize = 1;
+    const bg: RGB = rgb(0.1, 0.1, 0.1);
+    const fg: RGB = RGB::WHITE;
+
+    draw_text(player.ambient.to_string().as_str(), x, y, xoff, yoff, bg, fg)
+}
+
+fn get_char_at<const SIZE: usize, const H: usize>(
+    player: &Player<SIZE, H>,
+    x: usize,
+    y: usize,
+) -> AsciiSprite {
+    match draw_gui(player, x, y) {
+        Some(c) => return c,
+        None => {},
+    }
+
     let position = &player.world.position_relative_to_player(
         x as isize - TEXT_SIZE.0 as isize / 2,
         y as isize - TEXT_SIZE.1 as isize / 2,
     );
     let slot = player.world[position];
+    let vision = (get_vision(player, x, y) * 1.4).min(1.0);
+    fn random_offset(random: &mut FastRandom, max_offset: f32) -> f32 {
+        (random.next_less_than(256) as f32 / 255.0 - 0.5) * max_offset
+    }
+    let seed = FastRandom::get((position.x) as _) + (FastRandom::get(position.y as _) * 31);
+    let mut random = FastRandom::new(seed as _);
+    let max_offset = 0.35 - 0.3 * vision;
+    let tile = tile_to_ascii_sprite(&slot.tile, &mut random);
+    let r = vision + random_offset(&mut random, max_offset);
+    let bg = tile.bg * rgb_gray(r);
     match slot.entity {
-        Some(e) => e.get_tile_appearance(),
+        Some(e) => {
+            let char = match e {
+                Entity::Creature(c) => player.world.species[&c.species].symbol,
+                Entity::Object(_) => 'o',
+            };
+            let fg = if bg.squared_perceived_lightness() > 0.25 {
+                RGB::BLACK
+            } else {
+                rgb(vision, vision, vision)
+            };
+            AsciiSprite { bg, fg, index: char as u8 }
+        },
         None => {
-            fn random_color_multiplier(random: &mut FastRandom, max_offset: f32) -> f32 {
-                1.0 + (random.next_less_than(256) as f32 / 255.0 - 0.5) * max_offset
-            }
-            let tile = slot.tile.get_tile_appearance();
-            let mut random = FastRandom::new(position.uid());
             let max_offset = 0.1;
-            let r = random_color_multiplier(&mut random, max_offset);
-            let bg = rgb((tile.bg.r * r).min(1.0), (tile.bg.g * r).min(1.0), (tile.bg.b * r).min(1.0));
-            let max_offset = 0.2;
-            let r = random_color_multiplier(&mut random, max_offset);
-            let g = random_color_multiplier(&mut random, max_offset);
-            let b = random_color_multiplier(&mut random, max_offset);
-            let fg = rgb((tile.fg.r * r).min(1.0), (tile.fg.g * g).min(1.0), (tile.fg.b * b).min(1.0));
+            let r = vision + random_offset(&mut random, max_offset);
+            let fg = tile.fg * rgb_gray(r);
             AsciiSprite { bg, fg, ..tile }
         },
+    }
+}
+
+fn get_vision<const SIZE: usize, const H: usize>(player: &Player<SIZE, H>, x: usize, y: usize) -> f32 {
+    let x = x as isize - TEXT_SIZE.0 as isize / 2;
+    let y = y as isize - TEXT_SIZE.1 as isize / 2;
+    if x.unsigned_abs() > player.radius || y.unsigned_abs() > player.radius {
+        0.0
+    } else {
+        let vsize = player.radius * 2 + 1;
+        player.vision[(x + player.radius as isize) as usize * vsize + (y + player.radius as isize) as usize]
     }
 }
 
@@ -48,5 +93,6 @@ fn on_tick<const SIZE: usize, const H: usize>(player: &mut Player<SIZE, H>, cont
         },
         None => {}
     }
+    player.tick();
     UpdateResult::Update
 }

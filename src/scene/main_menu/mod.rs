@@ -1,4 +1,6 @@
-use estrogen::{AsciiSprite, Context, Key, RGB, rgb, UpdateResult, UI};
+use std::fmt::Display;
+
+use engine::{AsciiSprite, Context, Key, RGB, rgb, UpdateResult, UI, util::draw_selection_list};
 
 use super::{world_loading::create_world_loading_scene};
 
@@ -9,12 +11,12 @@ pub enum MenuOption {
     Quit,
 }
 
-impl MenuOption {
-    fn get_label(&self) -> &str {
-        match self {
+impl Display for MenuOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
             MenuOption::Play => "Play",
             MenuOption::Quit => "Quit",
-        }
+        })
     }
 }
 
@@ -39,22 +41,11 @@ fn get_char_at<const OPTION_COUNT: usize>(state: &MenuState<OPTION_COUNT>, x: us
     const color: RGB = rgb(0.8, 0.5, 0.5);
     const selected_color: RGB = rgb(1.0, 1.0, 0.5);
 
-    let o = y as i32 - yoff as i32;
-    if o < 0 || o as usize % (spacing + 1) != 0 {
-        return AsciiSprite { bg, fg: bg, index: 0 }
+    let gui_char = draw_selection_list(&state.options, state.selection, x, y, xoff, yoff, spacing, bg, color, selected_color);
+    match gui_char {
+        Some(c) => c,
+        None => AsciiSprite { bg, fg: bg, index: 0 },
     }
-    let o = o as usize / (spacing + 1);
-    if o >= OPTION_COUNT {
-        return AsciiSprite { bg, fg: bg, index: 0 }
-    }
-    let option = state.options[o].get_label();
-    let fg = if state.selection == o { selected_color } else { color };
-
-    let o = x as i32 - xoff as i32;
-    if o < 0 || o as usize >= option.len() {
-        return AsciiSprite { bg, fg: bg, index: 0 }
-    }
-    AsciiSprite { bg, fg, index: option.as_bytes()[o as usize] }
 }
 
 fn on_input<const OPTION_COUNT: usize>(state: &mut MenuState<OPTION_COUNT>, context: &mut Context, key: Key) -> UpdateResult {

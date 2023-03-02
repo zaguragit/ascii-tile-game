@@ -3,5 +3,11 @@ name = "uranium"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies.estrogen]
-path = "./estrogen"
+[dependencies.engine]
+path = "./engine"
+
+[dependencies.simulation]
+path = "./simulation"
+
+[dependencies.toml]
+version = "0.7.2"
